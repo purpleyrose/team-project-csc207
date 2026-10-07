@@ -14,11 +14,22 @@ at the end of the term.
 
 
 User Storeis:
-1. Open, want button open text file to load data
-2. Want to make sure text file is the right size 
-3. Control paramaters for how the model will be trained
-4. Run training loop
-5. Want a weights file that can be downloaded
-6. Want to see what's generated put on the screen
-7. Load a weights file into the AI
-8. Clear output, copy output, download text file
+
+As a user, when I open the application, I want a button to load a text file, that, when pressed, opens a file system popup to load my corpus text file
+As a user, I want my corpus text to be validated for size, to ensure that it can be used for training
+
+As a user, I want to click a 'Train' button, that will run an LLM training loop on my corpus data
+
+As a user, I want to be able to control model hyper parameters as an option.
+
+As a user, once training is complete, I want a model.pt to be presented to me.
+
+As a user, I want to go to an inference UI tab
+
+As a user, I want to press a button to load a .pt file, and have that open a popup to load a .pt file
+
+As a user, I want to control basic parameters of inference (token output, temperature, token write speed)
+
+As a user, I want to have my model.pt inferenced with a prompt, using my parameters. 
+
+As a user, I want to be able to write output to a text file for sharing.
