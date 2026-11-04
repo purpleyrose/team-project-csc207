@@ -30,7 +30,7 @@ As a user, when I open the application, I want a button to load a text file that
 As a user, I want my corpus text to be validated for size, so I know it can be used for training.
 
 ### User Story 3
-As a user, I want to search Project Gutenberg for books from 1500–1750 and add them to my corpus, so I can build a training set without finding files myself.
+As a user, I want to search Project Gutenberg for books from certain time periods and add them to my corpus, so I can build a training set without finding files myself.
 
 ### User Story 4
 As a user, I want to click a "Train" button that runs a training loop on my corpus.
@@ -39,10 +39,10 @@ As a user, I want to click a "Train" button that runs a training loop on my corp
 As a user, I want to set model hyperparameters (e.g. learning rate, number of layers, context length, training steps) before training.
 
 ### User Story 6
-As a user, once training is complete, I want to save my model as a `.tgsw` file.
+As a user, once training is complete, I want to save my model. E.g. as a `.tgsw` file.
 
 ### User Story 7
-As a user, I want to switch to a generation tab in the UI.
+As a user, I want to switch to a generation tab (the tab where I run the model) in the UI.
 
 ### User Story 8
 As a user, I want to press a button that opens a file chooser so I can load a `.tgsw` model.
@@ -65,7 +65,7 @@ The user selects one or more local text files. The system reads them, checks tha
 *(User Stories 1, 2)*
 
 ### Use Case 2: Import from Project Gutenberg
-The user searches for books (by title, author, or subject) restricted to authors active between 1500 and 1750. The system queries the Gutendex API, shows the results, downloads the plain-text editions the user chooses, strips the Gutenberg header and footer, and adds the text to the corpus.
+The user searches for books (by title, author, or subject) restricted to authors active between certain time periods. The system queries the Gutendex API, shows the results, downloads the plain-text editions the user chooses, strips the Gutenberg header and footer, and adds the text to the corpus.
 *(User Story 3)*
 
 ### Use Case 3: Train Model
