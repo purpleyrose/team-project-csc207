@@ -100,6 +100,14 @@ public interface Tensor {
     Tensor div(float scalar);
 
     /**
+     * Adds a scalar to every element of this tensor.
+     *
+     * @param scalar the value to add
+     * @return a new tensor of the same shape holding {@code this + scalar}
+     */
+    Tensor add(float scalar);
+
+    /**
      * Applies the exponential function to every element.
      *
      * @return a new tensor of the same shape holding {@code e^x} for each element {@code x}
@@ -119,6 +127,22 @@ public interface Tensor {
      * @return a new tensor of the same shape holding {@code sqrt(x)} for each element {@code x}
      */
     Tensor sqrt();
+
+    /**
+     * Applies the natural logarithm to every element. Zero produces negative
+     * infinity and negative elements produce {@code NaN}.
+     *
+     * @return a new tensor of the same shape holding {@code ln(x)} for each element {@code x}
+     */
+    Tensor log();
+
+    /**
+     * Raises every element to a power.
+     *
+     * @param exponent the power to raise each element to
+     * @return a new tensor of the same shape holding {@code x^exponent} for each element {@code x}
+     */
+    Tensor pow(float exponent);
 
     /**
      * Sums the elements along one axis.
@@ -219,4 +243,12 @@ public interface Tensor {
      * @return a new tensor with the same shape and elements that shares no storage with this one
      */
     Tensor clone();
+
+    /**
+     * Returns the elements as a new flat array in row-major order (the last
+     * index varies fastest). Changing the array does not affect this tensor.
+     *
+     * @return a copy of the elements, of length equal to the product of {@link #shape()}
+     */
+    float[] toArray();
 }
