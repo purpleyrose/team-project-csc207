@@ -7,7 +7,7 @@ import java.util.Arrays;
  *
  * <p>Elements are stored in a flat {@code float} array in row-major order, so
  * the last index varies fastest. Every operation allocates and returns a new
- * {@code NaiveTensor}; instances are never modified after construction.</p>
+ * tensor; instances are never modified after construction.</p>
  *
  * <p>This implementation favours clarity over speed. Matrix multiplication uses
  * the standard O(n<sup>3</sup>) triple loop, and elementwise operations access
@@ -40,22 +40,76 @@ public class NaiveTensor implements Tensor {
     }
 
     /**
-     * Creates a tensor from row-major data and a shape. The data array is used
-     * directly rather than copied, so callers should not modify it afterwards.
+     * A function from one {@code float} to another, used to share one loop
+     * between unary elementwise operations without boxing.
+     */
+    @FunctionalInterface
+    private interface FloatUnaryOp {
+        /**
+         * Applies this function.
+         *
+         * @param x the input element
+         * @return the output element
+         */
+        float apply(float x);
+    }
+
+    /**
+     * Creates a tensor from row-major data and a shape. Both arrays are copied,
+     * so later changes to them by the caller do not affect this tensor.
      *
      * @param data  the elements in row-major order
-     * @param shape the size of each dimension; this array is copied
+     * @param shape the size of each dimension
      * @throws IllegalArgumentException if {@code data.length} does not equal the
      *                                  product of the dimensions in {@code shape}
      */
     public NaiveTensor(float[] data, int[] shape) {
+        this(data, shape, true);
+    }
+
+    /**
+     * Creates a tensor, optionally taking ownership of {@code data} without
+     * copying it. Only for use by this class and its subclasses, which never
+     * modify or leak an array after passing it here.
+     *
+     * @param data     the elements in row-major order
+     * @param shape    the size of each dimension; always copied
+     * @param copyData whether to copy {@code data} ({@code false} only for arrays
+     *                 created internally and never shared)
+     * @throws IllegalArgumentException if {@code data.length} does not equal the
+     *                                  product of the dimensions in {@code shape}
+     */
+    protected NaiveTensor(float[] data, int[] shape, boolean copyData) {
         if (data.length != product(shape)) {
             throw new IllegalArgumentException("Data length " + data.length
                     + " does not match shape " + Arrays.toString(shape) + ".");
         }
-        this.data = data;
+        this.data = copyData ? data.clone() : data;
         this.shape = shape.clone();
         this.rank = shape.length;
+    }
+
+    /**
+     * Wraps a freshly computed array as a tensor of the same class as this one.
+     * Every operation builds its result through this method, so a subclass that
+     * overrides it keeps all results in that subclass.
+     *
+     * @param data  a new array owned by the result; it must not be used again
+     * @param shape the size of each dimension
+     * @return a tensor holding {@code data}
+     */
+    protected Tensor create(float[] data, int[] shape) {
+        return new NaiveTensor(data, shape, false);
+    }
+
+    /**
+     * Returns the backing array without copying it, for fast paths in
+     * subclasses. Callers must not modify the returned array.
+     *
+     * @return the elements in row-major order
+     */
+    protected final float[] rawData() {
+        return data;
     }
 
     // ------------------------------------------------------------------ basics
@@ -105,7 +159,15 @@ public class NaiveTensor implements Tensor {
      */
     @Override
     public Tensor clone() {
-        return new NaiveTensor(data.clone(), shape);
+        return create(data.clone(), shape);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public float[] toArray() {
+        return data.clone();
     }
 
     // ------------------------------------------------------------------ matmul
@@ -118,13 +180,7 @@ public class NaiveTensor implements Tensor {
     @Override
     public Tensor matmul(Tensor other) {
         int[] otherShape = other.shape();
-        if (this.rank != 2 || other.rank() != 2) {
-            throw new IllegalArgumentException("Both tensors must be rank 2 for matmul.");
-        }
-        if (shape[1] != otherShape[0]) {
-            throw new IllegalArgumentException("Inner dimensions must match for matmul: "
-                    + Arrays.toString(shape) + " x " + Arrays.toString(otherShape) + ".");
-        }
+        checkMatmulShapes(shape, otherShape);
 
         int rows = shape[0];
         int cols = otherShape[1];
@@ -140,7 +196,7 @@ public class NaiveTensor implements Tensor {
                 result[i * cols + j] = sum;
             }
         }
-        return new NaiveTensor(result, new int[]{rows, cols});
+        return create(result, new int[]{rows, cols});
     }
 
     // ------------------------------------------------------- elementwise (tensor)
@@ -225,7 +281,7 @@ public class NaiveTensor implements Tensor {
             }
             result[flat] = op.apply(this.get(idxA), other.get(idxB));
         }
-        return new NaiveTensor(result, outShape);
+        return create(result, outShape);
     }
 
     // ------------------------------------------------------- elementwise (scalar)
@@ -239,7 +295,7 @@ public class NaiveTensor implements Tensor {
         for (int i = 0; i < data.length; i++) {
             result[i] = data[i] * scalar;
         }
-        return new NaiveTensor(result, shape);
+        return create(result, shape);
     }
 
     /**
@@ -251,7 +307,15 @@ public class NaiveTensor implements Tensor {
         for (int i = 0; i < data.length; i++) {
             result[i] = data[i] / scalar;
         }
-        return new NaiveTensor(result, shape);
+        return create(result, shape);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Tensor add(float scalar) {
+        return map(x -> x + scalar);
     }
 
     // ------------------------------------------------------------------- unary
@@ -265,7 +329,7 @@ public class NaiveTensor implements Tensor {
         for (int i = 0; i < data.length; i++) {
             result[i] = (float) Math.exp(data[i]);
         }
-        return new NaiveTensor(result, shape);
+        return create(result, shape);
     }
 
     /**
@@ -277,7 +341,7 @@ public class NaiveTensor implements Tensor {
         for (int i = 0; i < data.length; i++) {
             result[i] = (float) Math.tanh(data[i]);
         }
-        return new NaiveTensor(result, shape);
+        return create(result, shape);
     }
 
     /**
@@ -289,7 +353,37 @@ public class NaiveTensor implements Tensor {
         for (int i = 0; i < data.length; i++) {
             result[i] = (float) Math.sqrt(data[i]);
         }
-        return new NaiveTensor(result, shape);
+        return create(result, shape);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Tensor log() {
+        return map(x -> (float) Math.log(x));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Tensor pow(float exponent) {
+        return map(x -> (float) Math.pow(x, exponent));
+    }
+
+    /**
+     * Applies a function to every element.
+     *
+     * @param f the function to apply
+     * @return a new tensor of the same shape holding {@code f(x)} for each element {@code x}
+     */
+    private Tensor map(FloatUnaryOp f) {
+        float[] result = new float[data.length];
+        for (int i = 0; i < data.length; i++) {
+            result[i] = f.apply(data[i]);
+        }
+        return create(result, shape);
     }
 
     // -------------------------------------------------------------- reductions
@@ -370,7 +464,7 @@ public class NaiveTensor implements Tensor {
             }
             result[i] = acc;
         }
-        return new NaiveTensor(result, newShape);
+        return create(result, newShape);
     }
 
     // ---------------------------------------------------------- shape ops
@@ -397,7 +491,7 @@ public class NaiveTensor implements Tensor {
             idx[dim1] = tmp;
             result[flat] = get(idx);
         }
-        return new NaiveTensor(result, newShape);
+        return create(result, newShape);
     }
 
     /**
@@ -431,7 +525,7 @@ public class NaiveTensor implements Tensor {
             throw new IllegalArgumentException("Cannot reshape " + Arrays.toString(shape)
                     + " into " + Arrays.toString(newShape) + ".");
         }
-        return new NaiveTensor(data.clone(), s);
+        return create(data, s);
     }
 
     /**
@@ -455,10 +549,28 @@ public class NaiveTensor implements Tensor {
             idx[dim] += start;
             result[flat] = get(idx);
         }
-        return new NaiveTensor(result, newShape);
+        return create(result, newShape);
     }
 
     // ---------------------------------------------------------------- helpers
+
+    /**
+     * Checks that two shapes can be matrix-multiplied.
+     *
+     * @param a the left operand's shape
+     * @param b the right operand's shape
+     * @throws IllegalArgumentException if either is not rank 2 or the inner
+     *                                  dimensions differ
+     */
+    protected static void checkMatmulShapes(int[] a, int[] b) {
+        if (a.length != 2 || b.length != 2) {
+            throw new IllegalArgumentException("Both tensors must be rank 2 for matmul.");
+        }
+        if (a[1] != b[0]) {
+            throw new IllegalArgumentException("Inner dimensions must match for matmul: "
+                    + Arrays.toString(a) + " x " + Arrays.toString(b) + ".");
+        }
+    }
 
     /**
      * Multiplies the dimensions of a shape together.
@@ -504,10 +616,10 @@ public class NaiveTensor implements Tensor {
     /**
      * Returns a debugging representation showing the shape and the flat data.
      *
-     * @return a string of the form {@code NaiveTensor(shape=[...], data=[...])}
+     * @return a string of the form {@code ClassName(shape=[...], data=[...])}
      */
     @Override
     public String toString() {
-        return "NaiveTensor(shape=" + Arrays.toString(shape) + ", data=" + Arrays.toString(data) + ")";
+        return getClass().getSimpleName() + "(shape=" + Arrays.toString(shape) + ", data=" + Arrays.toString(data) + ")";
     }
 }
