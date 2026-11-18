@@ -133,6 +133,8 @@ The Import from Project Gutenberg use case sends search requests to Gutendex (fo
 
 ## Design Diagrams
 
+Figma Mock up (anyone with link can view): https://www.figma.com/design/yDLtutZycHlquNZJMTMCdR/Text-Generation-Studio-%E2%80%94-UI-Mockup?node-id=0-1&t=uThV7KDGgFnmI8oc-1 
+
 ### UML Class Diagram
 
 *(To be added.)*
