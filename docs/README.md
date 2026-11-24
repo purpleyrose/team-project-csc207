@@ -161,5 +161,5 @@ mvn test      # runs the test suite, including the NaiveTensor tests
 ## Notes
 
 - The project follows Clean Architecture. Entities (including the tensor engine) have no dependencies on the UI, frameworks, or the network.
-- **Weight file format (`.tgsw`):** big-endian binary. The file starts with the magic bytes `TGSW`, a format version, and the number of tensors. Each tensor is then stored as its name, rank, shape, and float data.
+- **Weight file format (`.tgsw`):** big-endian binary containing a header (`TGSW` magic, version, flags), the model config, the tokenizer vocabulary, every weight tensor, and a CRC32 checksum. See [weight-format.md](weight-format.md) for the full specification.
 - Neural network maths uses per-layer forward and backward passes, verified with numerical gradient checking, rather than a general autograd system.
