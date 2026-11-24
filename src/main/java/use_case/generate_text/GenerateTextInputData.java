@@ -7,17 +7,17 @@ public class GenerateTextInputData {
 
     private final String prompt;
     private final int maxTokens;
-    private final double temperature;
+    private final float temperature;
 
     /**
      * Creates a text generation request.
      *
      * @param prompt the starting text supplied
      * @param maxTokens the maximum number of tokens to generate, excluding the prompt
-     * @param temperature the valued controlling randomness when sampling the next token
+     * @param temperature the value controlling randomness when sampling the next token
      */
 
-    public GenerateTextInputData(String prompt, int maxTokens, double temperature) {
+    public GenerateTextInputData(String prompt, int maxTokens, float temperature) {
         this.prompt = prompt;
         this.maxTokens = maxTokens;
         this.temperature = temperature;
@@ -46,7 +46,7 @@ public class GenerateTextInputData {
      *
      * @return the temperature used to sample the next token
      */
-    public double getTemperature() {
+    public float getTemperature() {
         return temperature;
     }
 
