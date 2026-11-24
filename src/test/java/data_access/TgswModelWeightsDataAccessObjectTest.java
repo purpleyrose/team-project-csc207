@@ -352,6 +352,180 @@ class TgswModelWeightsDataAccessObjectTest {
     }
 
     @Test
+    void rejectsNullMerge() {
+        StubTokenizer tokenizer = new StubTokenizer("bpe", List.of("a", "b", "c", "d"),
+                Arrays.asList((int[]) null));
+        assertRejected(new StubModel(sampleConfig(), tokenizer, sampleParameters()),
+                "Merge 0 is not a pair of token IDs");
+    }
+
+    @Test
+    void rejectsMergeWithNegativeTokenId() {
+        StubTokenizer tokenizer = new StubTokenizer("bpe", List.of("a", "b", "c", "d"),
+                List.<int[]>of(new int[]{-1, 0}));
+        assertRejected(new StubModel(sampleConfig(), tokenizer, sampleParameters()),
+                "Merge 0 refers to token ID -1, outside [0, 4)");
+    }
+
+    @Test
+    void rejectsNullTensorName() {
+        LinkedHashMap<String, Tensor> params = new LinkedHashMap<>();
+        params.put(null, vector(1f));
+        assertRejected(new StubModel(sampleConfig(), charTokenizer(), params), "Tensor name must be non-empty");
+    }
+
+    @Test
+    void rejectsNullTensor() {
+        LinkedHashMap<String, Tensor> params = new LinkedHashMap<>();
+        params.put("w", null);
+        assertRejected(new StubModel(sampleConfig(), charTokenizer(), params), "Tensor 'w' is null");
+    }
+
+    // ---- unpaired surrogates (would otherwise be silently saved as '?') ----
+
+    @Test
+    void rejectsTokenWithLoneHighSurrogate() {
+        // A tokenizer splitting an emoji with charAt produces these halves.
+        String emoji = "😀";
+        List<String> tokens = List.of(String.valueOf(emoji.charAt(0)), String.valueOf(emoji.charAt(1)), "a");
+        StubTokenizer tokenizer = new StubTokenizer("char", tokens, List.of());
+        assertRejected(new StubModel(configWithVocab(3), tokenizer, sampleParameters()),
+                "Token 0 is not valid Unicode (unpaired surrogate at index 0)");
+    }
+
+    @Test
+    void rejectsTokenWithLoneLowSurrogate() {
+        List<String> tokens = List.of("a", "x\uDE00", "c", "d");
+        StubTokenizer tokenizer = new StubTokenizer("char", tokens, List.of());
+        assertRejected(new StubModel(sampleConfig(), tokenizer, sampleParameters()),
+                "Token 1 is not valid Unicode (unpaired surrogate at index 1)");
+    }
+
+    @Test
+    void rejectsHighSurrogateAtEndOfToken() {
+        List<String> tokens = List.of("a", "b", "c", "d\uD83D");
+        StubTokenizer tokenizer = new StubTokenizer("char", tokens, List.of());
+        assertRejected(new StubModel(sampleConfig(), tokenizer, sampleParameters()),
+                "Token 3 is not valid Unicode (unpaired surrogate at index 1)");
+    }
+
+    @Test
+    void rejectsHighSurrogateFollowedByOrdinaryCharacter() {
+        List<String> tokens = List.of("a", "b", "\uD83Dx", "d");
+        StubTokenizer tokenizer = new StubTokenizer("char", tokens, List.of());
+        assertRejected(new StubModel(sampleConfig(), tokenizer, sampleParameters()),
+                "Token 2 is not valid Unicode (unpaired surrogate at index 0)");
+    }
+
+    @Test
+    void rejectsTensorNameWithUnpairedSurrogate() {
+        LinkedHashMap<String, Tensor> params = new LinkedHashMap<>();
+        params.put("w\uD800", vector(1f));
+        assertRejected(new StubModel(sampleConfig(), charTokenizer(), params),
+                "Tensor name 'w\uD800' is not valid Unicode (unpaired surrogate at index 1)");
+    }
+
+    @Test
+    void rejectsCorpusNameWithUnpairedSurrogate() {
+        StubConfig config = new StubConfig(4, 8, 2, 1, 1, 8,
+                OptionalDouble.empty(), OptionalInt.empty(), OptionalDouble.empty(), Optional.of("\uDC00"));
+        assertRejected(new StubModel(config, charTokenizer(), sampleParameters()),
+                "Config value 'corpus_name' is not valid Unicode (unpaired surrogate at index 0)");
+    }
+
+    // ---- negative config values ----
+
+    @Test
+    void rejectsNegativeRequiredConfigValue() {
+        StubConfig config = new StubConfig(4, -5, 2, 1, 1, 8,
+                OptionalDouble.empty(), OptionalInt.empty(), OptionalDouble.empty(), Optional.empty());
+        assertRejected(new StubModel(config, charTokenizer(), sampleParameters()),
+                "Config value 'context_length' must not be negative, got -5");
+    }
+
+    @Test
+    void rejectsNegativeTrainSteps() {
+        StubConfig config = new StubConfig(4, 8, 2, 1, 1, 8,
+                OptionalDouble.empty(), OptionalInt.of(-1), OptionalDouble.empty(), Optional.empty());
+        assertRejected(new StubModel(config, charTokenizer(), sampleParameters()),
+                "Config value 'train_steps' must not be negative, got -1");
+    }
+
+    @Test
+    void acceptsZeroForSizesASimpleModelDoesNotUse() throws IOException {
+        // For example, a bigram model has no layers, heads, or feed-forward block.
+        StubConfig config = new StubConfig(4, 1, 4, 0, 0, 0,
+                OptionalDouble.empty(), OptionalInt.empty(), OptionalDouble.empty(), Optional.empty());
+        Decoded decoded = Decoded.parse(saveAndRead(new StubModel(config, charTokenizer(), sampleParameters())));
+        assertConfig(decoded, "n_layers", 0, 0);
+        assertConfig(decoded, "n_heads", 0, 0);
+        assertConfig(decoded, "d_ff", 0, 0);
+    }
+
+    // ---- strings longer than writeUTF allows ----
+
+    @Test
+    void writesStringsLongerThan65535Bytes() throws IOException {
+        String longName = "é".repeat(40_000);   // 80,000 UTF-8 bytes
+        StubConfig config = new StubConfig(4, 8, 2, 1, 1, 8,
+                OptionalDouble.empty(), OptionalInt.empty(), OptionalDouble.empty(), Optional.of(longName));
+        Decoded decoded = Decoded.parse(saveAndRead(new StubModel(config, charTokenizer(), sampleParameters())));
+        assertConfig(decoded, "corpus_name", 2, longName);
+    }
+
+    // ---- target path ----
+
+    @Test
+    void rejectsEmptyDirectoryAsTarget() throws IOException {
+        Path target = Files.createDirectory(dir.resolve("models"));
+        IOException e = assertThrows(IOException.class, () -> dao.save(target.toString(), sampleModel()));
+        assertTrue(e.getMessage().endsWith("is a directory"), e.getMessage());
+        assertTrue(Files.isDirectory(target), "directory must not be replaced");
+        assertEquals(List.of("models"), listDir());
+    }
+
+    @Test
+    void rejectsNonEmptyDirectoryAsTarget() throws IOException {
+        Path target = Files.createDirectory(dir.resolve("models"));
+        Files.createFile(target.resolve("keep.txt"));
+        IOException e = assertThrows(IOException.class, () -> dao.save(target.toString(), sampleModel()));
+        assertTrue(e.getMessage().endsWith("is a directory"), e.getMessage());
+        assertTrue(Files.exists(target.resolve("keep.txt")));
+    }
+
+    @Test
+    void missingParentDirectoryIsAnIOException() {
+        Path target = dir.resolve("no-such-folder").resolve("model.tgsw");
+        assertThrows(IOException.class, () -> dao.save(target.toString(), sampleModel()));
+    }
+
+    // ---- model is read exactly once ----
+
+    @Test
+    void readsModelExactlyOnce() throws IOException {
+        CountingTokenizer tokenizer = new CountingTokenizer();
+        CountingModel model = new CountingModel(sampleConfig(), tokenizer, sampleParameters());
+
+        Decoded decoded = Decoded.parse(saveAndRead(model));
+
+        assertEquals(1, model.configCalls);
+        assertEquals(1, model.tokenizerCalls);
+        assertEquals(1, model.parametersCalls);
+        assertEquals(1, tokenizer.typeCalls);
+        assertEquals(1, tokenizer.tokensCalls);
+        assertEquals(1, tokenizer.mergesCalls);
+        // A second call would have returned 5 tokens and failed validation; the
+        // file holds what was validated on the first call.
+        assertEquals(List.of("a", "b", "c", "d"), decoded.tokens);
+    }
+
+    @Test
+    void rejectsNullConfig() {
+        StubModel model = new StubModel(null, charTokenizer(), sampleParameters());
+        assertThrows(NullPointerException.class, () -> dao.save(dir.resolve("m.tgsw").toString(), model));
+    }
+
+    @Test
     void rejectsNullModel() {
         assertThrows(NullPointerException.class, () -> dao.save(dir.resolve("m.tgsw").toString(), null));
     }
@@ -541,6 +715,55 @@ class TgswModelWeightsDataAccessObjectTest {
         @Override public String type() { return type; }
         @Override public List<String> tokens() { return tokens; }
         @Override public List<int[]> merges() { return merges; }
+    }
+
+    /** Counts calls, and returns different data after the first call to each method. */
+    private static final class CountingTokenizer implements Tokenizer {
+        int typeCalls;
+        int tokensCalls;
+        int mergesCalls;
+
+        @Override public String type() {
+            return typeCalls++ == 0 ? "char" : "word";
+        }
+
+        @Override public List<String> tokens() {
+            return tokensCalls++ == 0 ? List.of("a", "b", "c", "d") : List.of("a", "b", "c", "d", "e");
+        }
+
+        @Override public List<int[]> merges() {
+            return mergesCalls++ == 0 ? List.of() : List.<int[]>of(new int[]{0, 1});
+        }
+    }
+
+    private static final class CountingModel implements Model {
+        private final ModelConfig config;
+        private final Tokenizer tokenizer;
+        private final LinkedHashMap<String, Tensor> parameters;
+        int configCalls;
+        int tokenizerCalls;
+        int parametersCalls;
+
+        CountingModel(ModelConfig config, Tokenizer tokenizer, LinkedHashMap<String, Tensor> parameters) {
+            this.config = config;
+            this.tokenizer = tokenizer;
+            this.parameters = parameters;
+        }
+
+        @Override public LinkedHashMap<String, Tensor> parameters() {
+            parametersCalls++;
+            return parameters;
+        }
+
+        @Override public ModelConfig config() {
+            configCalls++;
+            return config;
+        }
+
+        @Override public Tokenizer tokenizer() {
+            tokenizerCalls++;
+            return tokenizer;
+        }
     }
 
     // ---- independent decoder, written from docs/weight-format.md ----
