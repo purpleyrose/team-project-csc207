@@ -41,28 +41,34 @@ public class TrainModelInteractor implements TrainModelInputBoundary {
 
     /**
      * Validate the input data.
+     *
+     * <p>Every size and count hyperparameter must be positive. Zero is rejected too,
+     * because these values are used as divisors (heads in the divisibility check below;
+     * embedding size, context length, batch size and training steps when the trainer
+     * splits and averages over them), and a model with zero layers trains nothing. The
+     * seed is not checked, since any int is a valid seed.</p>
+     *
      * @param inputData the input data.
      * @return null if the input data is valid, otherwise an error message.
      */
     private String validate(TrainModelInputData inputData) {
-        if (inputData.getLayers() < 0) {
-            return "Number of layers must be non-negative";
+        if (inputData.getLayers() <= 0) {
+            return "Number of layers must be positive";
         }
-        if (inputData.getTrainingSteps() < 0) {
-            return "Number of training steps must be non-negative";
+        if (inputData.getTrainingSteps() <= 0) {
+            return "Number of training steps must be positive";
         }
-        // Must be positive, not just non-negative: the divisibility check below divides by heads.
         if (inputData.getHeads() <= 0) {
             return "Number of heads must be positive";
         }
-        if (inputData.getEmbeddingSize() < 0) {
-            return "Embedding size must be non-negative";
+        if (inputData.getEmbeddingSize() <= 0) {
+            return "Embedding size must be positive";
         }
-        if (inputData.getContextLength() < 0) {
-            return "Context length must be non-negative";
+        if (inputData.getContextLength() <= 0) {
+            return "Context length must be positive";
         }
-        if (inputData.getBatchSize() < 0) {
-            return "Batch size must be non-negative";
+        if (inputData.getBatchSize() <= 0) {
+            return "Batch size must be positive";
         }
         if (inputData.getLearningRate() <= 0) {
             return "Learning rate must be positive";

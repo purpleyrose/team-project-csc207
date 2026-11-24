@@ -163,16 +163,18 @@ class TrainModelInteractorTest {
     // Argument order: layers, heads, embeddingSize, contextLength, batchSize,
     // trainingSteps, seed, learningRate
 
+    // --- Negative values ---
+
     @Test
     void validateRejectsNegativeLayers() {
         assertRejected(new TrainModelInputData(-1, 4, 64, 32, 8, 3, 42, 0.001f),
-                "Number of layers must be non-negative");
+                "Number of layers must be positive");
     }
 
     @Test
     void validateRejectsNegativeTrainingSteps() {
         assertRejected(new TrainModelInputData(2, 4, 64, 32, 8, -1, 42, 0.001f),
-                "Number of training steps must be non-negative");
+                "Number of training steps must be positive");
     }
 
     @Test
@@ -184,20 +186,63 @@ class TrainModelInteractorTest {
     @Test
     void validateRejectsNegativeEmbeddingSize() {
         assertRejected(new TrainModelInputData(2, 4, -64, 32, 8, 3, 42, 0.001f),
-                "Embedding size must be non-negative");
+                "Embedding size must be positive");
     }
 
     @Test
     void validateRejectsNegativeContextLength() {
         assertRejected(new TrainModelInputData(2, 4, 64, -32, 8, 3, 42, 0.001f),
-                "Context length must be non-negative");
+                "Context length must be positive");
     }
 
     @Test
     void validateRejectsNegativeBatchSize() {
         assertRejected(new TrainModelInputData(2, 4, 64, 32, -8, 3, 42, 0.001f),
-                "Batch size must be non-negative");
+                "Batch size must be positive");
     }
+
+    // --- Zero values (would cause division by zero or an empty model) ---
+
+    @Test
+    void validateRejectsZeroLayers() {
+        assertRejected(new TrainModelInputData(0, 4, 64, 32, 8, 3, 42, 0.001f),
+                "Number of layers must be positive");
+    }
+
+    @Test
+    void validateRejectsZeroTrainingSteps() {
+        assertRejected(new TrainModelInputData(2, 4, 64, 32, 8, 0, 42, 0.001f),
+                "Number of training steps must be positive");
+    }
+
+    @Test
+    void validateRejectsZeroEmbeddingSize() {
+        // 0 % heads == 0, so without this check zero would slip past the divisibility test.
+        assertRejected(new TrainModelInputData(2, 4, 0, 32, 8, 3, 42, 0.001f),
+                "Embedding size must be positive");
+    }
+
+    @Test
+    void validateRejectsZeroContextLength() {
+        assertRejected(new TrainModelInputData(2, 4, 64, 0, 8, 3, 42, 0.001f),
+                "Context length must be positive");
+    }
+
+    @Test
+    void validateRejectsZeroBatchSize() {
+        assertRejected(new TrainModelInputData(2, 4, 64, 32, 0, 3, 42, 0.001f),
+                "Batch size must be positive");
+    }
+
+    @Test
+    void validateNeverThrowsWhenEveryHyperparameterIsZero() {
+        // Regression: no zero value may reach a division and throw ArithmeticException.
+        assertDoesNotThrow(() ->
+                assertRejected(new TrainModelInputData(0, 0, 0, 0, 0, 0, 0, 0f),
+                        "Number of layers must be positive"));
+    }
+
+    // --- Learning rate and divisibility ---
 
     @Test
     void validateRejectsZeroLearningRate() {
@@ -229,13 +274,21 @@ class TrainModelInteractorTest {
     void validateReportsOnlyTheFirstProblemFound() {
         // Layers is checked first, so its message wins over the bad learning rate.
         assertRejected(new TrainModelInputData(-1, 4, 64, 32, 8, 3, 42, -1f),
-                "Number of layers must be non-negative");
+                "Number of layers must be positive");
+    }
+
+    // --- Accepted inputs ---
+
+    @Test
+    void validateAcceptsOneForEverySizeHyperparameter() {
+        // 1 is the smallest valid value for every size and count field.
+        assertAccepted(new TrainModelInputData(1, 1, 1, 1, 1, 1, 42, 0.001f));
     }
 
     @Test
-    void validateAcceptsZeroForNonNegativeFields() {
-        // Zero is allowed for everything except heads and learning rate.
-        assertAccepted(new TrainModelInputData(0, 4, 0, 0, 0, 0, 42, 0.001f));
+    void validateAcceptsSeedOfZero() {
+        // Seed is the one int field where zero is fine.
+        assertAccepted(new TrainModelInputData(2, 4, 64, 32, 8, 3, 0, 0.001f));
     }
 
     @Test
