@@ -87,14 +87,14 @@ The user trains a byte-pair encoding tokenizer on the corpus instead of using a 
 
 ## Minimal Viable Product (MVP)
 
-| Team Member | MVP Use Case |
-|-------------|--------------|
+| Team Member     | MVP Use Case |
+|-----------------|--------------|
 | Pamela Clements | Train Model |
-| Name | Generate Text |
-| Name | Import from Project Gutenberg |
-| Name | Load Corpus |
-| Name | Save and Load Model |
-| Name | Train BPE Tokenizer (stretch) / Tensor engine support |
+| John            | Generate Text |
+| Wolfgang        | Import from Project Gutenberg |
+| Elaine          | Load Corpus |
+| Name            | Save and Load Model |
+| Name            | Train BPE Tokenizer (stretch) / Tensor engine support |
 
 ---
 
