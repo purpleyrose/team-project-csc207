@@ -40,6 +40,39 @@ public class TrainModelInteractor implements TrainModelInputBoundary {
     }
 
     /**
+     * Validate the input data.
+     * @param inputData the input data.
+     * @return null if the input data is valid, otherwise an error message.
+     */
+    private String validate(TrainModelInputData inputData) {
+        if (inputData.getLayers() < 0) {
+            return "Number of layers must be non-negative";
+        }
+        if (inputData.getTrainingSteps() < 0) {
+            return "Number of training steps must be non-negative";
+        }
+        // Must be positive, not just non-negative: the divisibility check below divides by heads.
+        if (inputData.getHeads() <= 0) {
+            return "Number of heads must be positive";
+        }
+        if (inputData.getEmbeddingSize() < 0) {
+            return "Embedding size must be non-negative";
+        }
+        if (inputData.getContextLength() < 0) {
+            return "Context length must be non-negative";
+        }
+        if (inputData.getBatchSize() < 0) {
+            return "Batch size must be non-negative";
+        }
+        if (inputData.getLearningRate() <= 0) {
+            return "Learning rate must be positive";
+        }
+        if (inputData.getEmbeddingSize() % inputData.getHeads() != 0 ) {
+            return "Embedding size must be a multiple of heads";
+        }
+        return null;
+    }
+    /**
      * Executes the train-model use case.
      *
      * <p>The workflow is:</p>
@@ -59,6 +92,11 @@ public class TrainModelInteractor implements TrainModelInputBoundary {
      */
     @Override
     public void execute(TrainModelInputData inputData) {
+        String errorMessage = validate(inputData);
+        if (errorMessage != null) {
+            presenter.prepareFailureView(errorMessage);
+            return;
+        }
         Corpus corpus = dataAccess.getCorpus();
         if (!corpus.isLargeEnoughToTrain()) {
             presenter.prepareFailureView("Corpus is too small to train a model.");

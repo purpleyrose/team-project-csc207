@@ -124,6 +124,132 @@ class TrainModelInteractorTest {
     }
 
     // ---------------------------------------------------------------------
+    // Input validation (validate() is private, so it is tested through execute())
+    // ---------------------------------------------------------------------
+
+    /**
+     * Runs the interactor on the given input with a trainable corpus and asserts that
+     * it fails with {@code expectedMessage} before touching the corpus or the trainer.
+     */
+    private void assertRejected(TrainModelInputData input, String expectedMessage) {
+        int[] getCorpusCalls = {0};
+        StubCorpus corpus = new StubCorpus(true);
+        FakeTrainer trainer = new FakeTrainer(new float[]{1.0f}, 0.5f);
+        TrainModelInteractor interactor = new TrainModelInteractor(() -> {
+            getCorpusCalls[0]++;
+            return corpus;
+        }, presenter, trainer);
+
+        interactor.execute(input);
+
+        assertEquals(List.of(expectedMessage), presenter.failures);
+        assertTrue(presenter.progress.isEmpty());
+        assertTrue(presenter.successes.isEmpty());
+        assertEquals(0, trainer.callCount, "trainer should not run on invalid input");
+        assertEquals(0, getCorpusCalls[0], "corpus should not be loaded on invalid input");
+    }
+
+    /** Runs the interactor and asserts the input passed validation and training succeeded. */
+    private void assertAccepted(TrainModelInputData input) {
+        TrainModelInteractor interactor = new TrainModelInteractor(
+                () -> new StubCorpus(true), presenter, new FakeTrainer(new float[0], 0.5f));
+
+        interactor.execute(input);
+
+        assertTrue(presenter.failures.isEmpty(), "unexpected failure: " + presenter.failures);
+        assertEquals(1, presenter.successes.size());
+    }
+
+    // Argument order: layers, heads, embeddingSize, contextLength, batchSize,
+    // trainingSteps, seed, learningRate
+
+    @Test
+    void validateRejectsNegativeLayers() {
+        assertRejected(new TrainModelInputData(-1, 4, 64, 32, 8, 3, 42, 0.001f),
+                "Number of layers must be non-negative");
+    }
+
+    @Test
+    void validateRejectsNegativeTrainingSteps() {
+        assertRejected(new TrainModelInputData(2, 4, 64, 32, 8, -1, 42, 0.001f),
+                "Number of training steps must be non-negative");
+    }
+
+    @Test
+    void validateRejectsNegativeHeads() {
+        assertRejected(new TrainModelInputData(2, -4, 64, 32, 8, 3, 42, 0.001f),
+                "Number of heads must be positive");
+    }
+
+    @Test
+    void validateRejectsNegativeEmbeddingSize() {
+        assertRejected(new TrainModelInputData(2, 4, -64, 32, 8, 3, 42, 0.001f),
+                "Embedding size must be non-negative");
+    }
+
+    @Test
+    void validateRejectsNegativeContextLength() {
+        assertRejected(new TrainModelInputData(2, 4, 64, -32, 8, 3, 42, 0.001f),
+                "Context length must be non-negative");
+    }
+
+    @Test
+    void validateRejectsNegativeBatchSize() {
+        assertRejected(new TrainModelInputData(2, 4, 64, 32, -8, 3, 42, 0.001f),
+                "Batch size must be non-negative");
+    }
+
+    @Test
+    void validateRejectsZeroLearningRate() {
+        assertRejected(new TrainModelInputData(2, 4, 64, 32, 8, 3, 42, 0f),
+                "Learning rate must be positive");
+    }
+
+    @Test
+    void validateRejectsNegativeLearningRate() {
+        assertRejected(new TrainModelInputData(2, 4, 64, 32, 8, 3, 42, -0.01f),
+                "Learning rate must be positive");
+    }
+
+    @Test
+    void validateRejectsEmbeddingSizeNotDivisibleByHeads() {
+        assertRejected(new TrainModelInputData(2, 3, 64, 32, 8, 3, 42, 0.001f),
+                "Embedding size must be a multiple of heads");
+    }
+
+    @Test
+    void validateRejectsZeroHeadsWithAFailureViewInsteadOfCrashing() {
+        // Regression: zero heads used to reach embeddingSize % 0 and throw ArithmeticException.
+        assertDoesNotThrow(() ->
+                assertRejected(new TrainModelInputData(2, 0, 64, 32, 8, 3, 42, 0.001f),
+                        "Number of heads must be positive"));
+    }
+
+    @Test
+    void validateReportsOnlyTheFirstProblemFound() {
+        // Layers is checked first, so its message wins over the bad learning rate.
+        assertRejected(new TrainModelInputData(-1, 4, 64, 32, 8, 3, 42, -1f),
+                "Number of layers must be non-negative");
+    }
+
+    @Test
+    void validateAcceptsZeroForNonNegativeFields() {
+        // Zero is allowed for everything except heads and learning rate.
+        assertAccepted(new TrainModelInputData(0, 4, 0, 0, 0, 0, 42, 0.001f));
+    }
+
+    @Test
+    void validateAcceptsNegativeSeed() {
+        // Seed is not validated, so any int is fine.
+        assertAccepted(new TrainModelInputData(2, 4, 64, 32, 8, 3, -42, 0.001f));
+    }
+
+    @Test
+    void validateAcceptsEmbeddingSizeEqualToHeads() {
+        assertAccepted(new TrainModelInputData(1, 8, 8, 16, 1, 1, 0, 0.5f));
+    }
+
+    // ---------------------------------------------------------------------
     // Test doubles
     // ---------------------------------------------------------------------
 
