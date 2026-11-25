@@ -82,8 +82,15 @@ public class LossChartPanel extends JComponent {
         float min = Float.POSITIVE_INFINITY;
         float max = Float.NEGATIVE_INFINITY;
         for (float v : losses) {
-            min = Math.min(min, v);
-            max = Math.max(max, v);
+            if (Float.isFinite(v)) {
+                min = Math.min(min, v);
+                max = Math.max(max, v);
+            }
+        }
+        if (min > max) {
+            drawCentered(g2, "Loss is not a number");
+            g2.dispose();
+            return;
         }
         float pad = Math.max((max - min) * 0.08f, 0.05f);
         float lo = Math.max(0f, min - pad);
@@ -166,8 +173,12 @@ public class LossChartPanel extends JComponent {
      * @param hi    loss at the top of the plot
      */
     private void addPoint(Path2D.Float path, int i, int n, double right, int h, float lo, float hi) {
+        float loss = losses.get(i);
+        if (!Float.isFinite(loss)) {
+            return;
+        }
         float x = (float) (LEFT + (n == 1 ? 0 : right * i / (n - 1)));
-        float y = toY(losses.get(i), h, lo, hi);
+        float y = toY(loss, h, lo, hi);
         if (path.getCurrentPoint() == null) {
             path.moveTo(x, y);
         } else {

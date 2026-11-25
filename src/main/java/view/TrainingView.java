@@ -355,6 +355,9 @@ public class TrainingView extends JPanel implements TrainingViewModelListener {
             return;
         }
         showError(null);
+        // Disable right away so a double-click can't start a second run before the first
+        // update arrives. Every outcome (progress, success, failure) re-renders the button.
+        trainButton.setEnabled(false);
         controller.execute(layers, heads, embedding, context, batch, steps, seed, learningRate);
     }
 
