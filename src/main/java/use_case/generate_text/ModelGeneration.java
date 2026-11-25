@@ -5,7 +5,7 @@ import torch.Tensor;
 /**
  * Provides the model and tokenizer operations needed to generate text.
  */
-public interface GenerationModel {
+public interface ModelGeneration {
     /**
      * Returns the model's context length.
      *

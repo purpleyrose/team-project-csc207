@@ -13,5 +13,5 @@ public interface GenerateTextDataAccessInterface {
      *
      * @return the active model, or an empty Optional if none is trained or loaded
      */
-    Optional<GenerationModel> getActiveModel();
+    Optional<ModelGeneration> getActiveModel();
 }

@@ -6,7 +6,7 @@ import torch.Tensor;
 /**
  * Runs the Generate Text use case for one prompt at a time.
  *
- * <p>The active {@link GenerationModel} encodes the prompt and predicts scores for
+ * <p>The active {@link ModelGeneration} encodes the prompt and predicts scores for
  * the next token. The {@link TokenSampler} selects a token from those scores at the
  * requested temperature. The interactor sends each decoded piece of text to the
  * {@link GenerateTextOutputBoundary} in generation order.</p>
@@ -52,7 +52,7 @@ public class GenerateTextInteractor implements GenerateTextInputBoundary{
         try {
             validate(inputData);
 
-            GenerationModel model = dataAccess.getActiveModel().orElseThrow(
+            ModelGeneration model = dataAccess.getActiveModel().orElseThrow(
                     () -> new GenerationException("Train or load a model before generating text.")
             );
 
@@ -99,7 +99,7 @@ public class GenerateTextInteractor implements GenerateTextInputBoundary{
      * @throws GenerationException if the context length is invalid, the prompt
      *         produces no tokens, or encoding, prediction, sampling, or decoding fails
      */
-    private void generate(GenerateTextInputData inputData, GenerationModel model) throws GenerationException {
+    private void generate(GenerateTextInputData inputData, ModelGeneration model) throws GenerationException {
 
         int contextLength = model.getContextLength();
         if (contextLength <= 0){
