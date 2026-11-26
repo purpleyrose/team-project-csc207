@@ -1,62 +1,81 @@
 package use_case.generate_text;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import torch.NaiveTensor;
+import torch.Tensor;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
+import static org.junit.jupiter.api.Assertions.*;
 
-import torch.NaiveTensor;
-import torch.Tensor;
-
-/** Exercises Generate Text through its input boundary with a predictable two-token model. */
+/**
+ * Unit tests for {@link GenerateTextInteractor}.
+ *
+ * <p>A two-token model and a deterministic sampler make each prediction
+ * repeatable. The presenter records each decoded chunk and the callback order.</p>
+ */
 class GenerateTextInteractorTest {
-    private final RecordingPresenter presenter = new RecordingPresenter();
-    private final List<Float> temperatures = new ArrayList<>();
+
+    private RecordingPresenter presenter;
+    private List<Float> temperatures;
+
+    @BeforeEach
+    void setUp() {
+        presenter = new RecordingPresenter();
+        temperatures = new ArrayList<>();
+    }
+
+    // --- Generation and streaming ---
 
     @Test
     void streamsTwoNewTokensInOrderUsingThePromptSuffix() {
         PredictableModel model = new PredictableModel(2, 1, 0, 1);
+
         executeWith(model, new GenerateTextInputData("My prompt ", 2, 1.5f));
 
+        // The prompt encodes to [1, 0, 1]. Only its final two IDs fit in the first prediction.
         assertEquals(List.of("My prompt "), model.encodedPrompts);
         assertEquals(2, model.contexts.size());
         assertArrayEquals(new int[]{0, 1}, model.contexts.get(0));
         assertArrayEquals(new int[]{1, 0}, model.contexts.get(1));
         assertEquals(List.of(1.5f, 1.5f), temperatures);
-        assertEquals(List.of("text: thee", "text:\n", "success"), presenter.events);
+        assertEquals(List.of(" thee", "\n"), presenter.progress);
+        assertEquals(List.of("progress", "progress", "success"), presenter.callOrder);
     }
 
     @Test
     void shortPromptGrowsUntilTheContextIsFull() {
         PredictableModel model = new PredictableModel(3, 0);
+
         executeWith(model, new GenerateTextInputData("A", 3, 1f));
 
         assertEquals(3, model.contexts.size());
         assertArrayEquals(new int[]{0}, model.contexts.get(0));
         assertArrayEquals(new int[]{0, 1}, model.contexts.get(1));
         assertArrayEquals(new int[]{0, 1, 0}, model.contexts.get(2));
-        assertEquals(List.of("text:\n", "text: thee", "text:\n", "success"), presenter.events);
+        assertEquals(List.of("\n", " thee", "\n"), presenter.progress);
+        assertEquals(List.of("progress", "progress", "progress", "success"), presenter.callOrder);
     }
 
     @Test
     void oneTokenContextUsesOnlyTheMostRecentToken() {
         PredictableModel model = new PredictableModel(1, 0, 1);
+
         executeWith(model, new GenerateTextInputData("AB", 2, 1f));
 
         assertEquals(2, model.contexts.size());
         assertArrayEquals(new int[]{1}, model.contexts.get(0));
         assertArrayEquals(new int[]{0}, model.contexts.get(1));
     }
+
+    // --- Model and sampler failures ---
 
     @Test
     void missingModelReportsOnlyFailure() {
@@ -68,6 +87,49 @@ class GenerateTextInteractorTest {
         assertOnlyFailureAbout("model");
         assertTrue(temperatures.isEmpty());
     }
+
+    @Test
+    void unusableContextLengthFailsBeforePrediction() {
+        PredictableModel model = new PredictableModel(0, 1);
+
+        executeWith(model, new GenerateTextInputData("A", 2, 1f));
+
+        assertOnlyFailureAbout("context length");
+        assertTrue(model.contexts.isEmpty());
+    }
+
+    @Test
+    void promptThatEncodesToNoTokensFailsBeforePrediction() {
+        PredictableModel model = new PredictableModel(2);
+
+        executeWith(model, new GenerateTextInputData("A", 2, 1f));
+
+        assertOnlyFailureAbout("token");
+        assertTrue(model.contexts.isEmpty());
+    }
+
+    @Test
+    void samplerFailureAfterOneTokenEndsTheStream() {
+        PredictableModel model = new PredictableModel(2, 1);
+        // The model favors token 0 on the first call and token 1 on the second.
+        TokenSampler failingSampler = (scores, temperature) -> {
+            if (scores.get(1) > scores.get(0)) {
+                throw new GenerationException("Sampling failed.");
+            }
+            return 0;
+        };
+        GenerateTextInteractor interactor =
+                new GenerateTextInteractor(() -> Optional.of(model), presenter, failingSampler);
+
+        interactor.execute(new GenerateTextInputData("A", 3, 1f));
+
+        assertEquals(List.of(" thee"), presenter.progress);
+        assertEquals(List.of("Sampling failed."), presenter.failures);
+        assertEquals(List.of("progress", "failure"), presenter.callOrder);
+        assertEquals(2, model.contexts.size());
+    }
+
+    // --- Input validation through execute() ---
 
     @ParameterizedTest
     @MethodSource("invalidRequests")
@@ -97,41 +159,7 @@ class GenerateTextInteractorTest {
         );
     }
 
-    @Test
-    void unusableContextLengthFailsBeforePrediction() {
-        PredictableModel model = new PredictableModel(0, 1);
-        executeWith(model, new GenerateTextInputData("A", 2, 1f));
-
-        assertOnlyFailureAbout("context length");
-        assertTrue(model.contexts.isEmpty());
-    }
-
-    @Test
-    void promptThatEncodesToNoTokensFailsBeforePrediction() {
-        PredictableModel model = new PredictableModel(2);
-        executeWith(model, new GenerateTextInputData("A", 2, 1f));
-
-        assertOnlyFailureAbout("token");
-        assertTrue(model.contexts.isEmpty());
-    }
-
-    @Test
-    void samplerFailureAfterOneTokenEndsTheStream() {
-        PredictableModel model = new PredictableModel(2, 1);
-        TokenSampler failingSampler = (scores, temperature) -> {
-            if (scores.get(1) > scores.get(0)) {
-                throw new GenerationException("Sampling failed.");
-            }
-            return 0;
-        };
-        GenerateTextInteractor interactor =
-                new GenerateTextInteractor(() -> Optional.of(model), presenter, failingSampler);
-
-        interactor.execute(new GenerateTextInputData("A", 3, 1f));
-
-        assertEquals(List.of("text: thee", "failure:Sampling failed."), presenter.events);
-        assertEquals(2, model.contexts.size());
-    }
+    // --- Test helpers ---
 
     private void executeWith(ModelGeneration model, GenerateTextInputData request) {
         GenerateTextInputBoundary interactor =
@@ -145,12 +173,15 @@ class GenerateTextInteractorTest {
         return scores.get(0) > scores.get(1) ? 0 : 1;
     }
 
+    /** Checks that failure was the only callback and its message identifies the problem. */
     private void assertOnlyFailureAbout(String reason) {
-        assertEquals(1, presenter.events.size(), presenter.events.toString());
-        String event = presenter.events.get(0);
-        assertTrue(event.startsWith("failure:"), event);
-        assertTrue(event.contains(reason), event);
+        assertEquals(List.of("failure"), presenter.callOrder);
+        assertEquals(1, presenter.failures.size());
+        String message = presenter.failures.get(0);
+        assertTrue(message.contains(reason), message);
     }
+
+    // --- Test doubles ---
 
     /** Encodes to fixed IDs and gives the highest score to the opposite of the last token. */
     private static class PredictableModel implements ModelGeneration {
@@ -177,6 +208,7 @@ class GenerateTextInteractorTest {
 
         @Override
         public Tensor nextTokenScore(int[] context) {
+            // Keep the IDs seen at prediction time, even if the caller later reuses the array.
             contexts.add(context.clone());
             int lastToken = context[context.length - 1];
             float[] scores = lastToken == 0 ? new float[]{0f, 1f} : new float[]{1f, 0f};
@@ -191,21 +223,25 @@ class GenerateTextInteractorTest {
 
     /** Records the order and content of every output-boundary callback. */
     private static class RecordingPresenter implements GenerateTextOutputBoundary {
-        private final List<String> events = new ArrayList<>();
+        final List<String> progress = new ArrayList<>();
+        final List<String> failures = new ArrayList<>();
+        final List<String> callOrder = new ArrayList<>();
 
         @Override
         public void prepareProgressView(String text) {
-            events.add("text:" + text);
+            progress.add(text);
+            callOrder.add("progress");
         }
 
         @Override
         public void prepareSuccessView() {
-            events.add("success");
+            callOrder.add("success");
         }
 
         @Override
         public void prepareFailureView(String message) {
-            events.add("failure:" + message);
+            failures.add(message);
+            callOrder.add("failure");
         }
     }
 }
